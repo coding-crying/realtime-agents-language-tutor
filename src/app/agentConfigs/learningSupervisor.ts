@@ -1,5 +1,4 @@
 import { tool } from '@openai/agents/realtime';
-import { processLearningEvent } from '../../lib/neo4j/srs';
 import { LearningEvent } from '../../lib/neo4j/types';
 
 export const learningAnalysisInstructions = `You are a language learning analysis expert, tasked with analyzing conversation turns to extract learning insights and update a spaced repetition system (SRS) for language learners.
@@ -225,13 +224,46 @@ Extract meaningful vocabulary items and assess the user's performance with each 
 
       // Process the learning event to update Neo4j
       if (learningEvent.lexemes.length > 0) {
-        await processLearningEvent(learningEvent);
-        
         if (addBreadcrumb) {
-          addBreadcrumb('[learningAnalysis] Neo4j updated', { 
+          addBreadcrumb('[learningAnalysis] About to process Neo4j', { 
             lexemeCount: learningEvent.lexemes.length,
             userId 
           });
+        }
+        
+        try {
+          // Call server-side API to process learning event
+          const response = await fetch('/api/learning/process-event', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(learningEvent),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to process learning event');
+          }
+
+          const result = await response.json();
+          
+          if (addBreadcrumb) {
+            addBreadcrumb('[learningAnalysis] Neo4j updated successfully', { 
+              lexemeCount: result.lexemesProcessed,
+              userId 
+            });
+          }
+        } catch (neo4jError) {
+          console.error('Neo4j processing failed:', neo4jError);
+          if (addBreadcrumb) {
+            addBreadcrumb('[learningAnalysis] Neo4j failed', { 
+              error: neo4jError.message,
+              lexemeCount: learningEvent.lexemes.length,
+              userId 
+            });
+          }
+          throw neo4jError;
         }
       }
 

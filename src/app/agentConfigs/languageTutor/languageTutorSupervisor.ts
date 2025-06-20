@@ -1,5 +1,5 @@
 import { RealtimeItem, tool } from '@openai/agents/realtime';
-import { getKnownWords, getReviewDue, getUserProgress, processLearningEvent } from '../../../lib/neo4j/srs';
+import { getKnownWords, getReviewDue, getUserProgress } from '../../../lib/neo4j/srs';
 import { closeDriver } from '../../../lib/neo4j/driver';
 import { learningAnalysisInstructions } from '../learningSupervisor';
 import { LearningEvent } from '../../../lib/neo4j/types';
@@ -469,13 +469,38 @@ Extract meaningful vocabulary items and assess the user's performance with each 
 
       // Process the learning event to update Neo4j
       if (learningEvent.lexemes.length > 0) {
-        await processLearningEvent(learningEvent);
-        
-        if (addBreadcrumb) {
-          addBreadcrumb('[learningAnalysis] Neo4j updated', { 
-            lexemeCount: learningEvent.lexemes.length,
-            userId 
+        try {
+          // Call server-side API to process learning event
+          const response = await fetch('/api/learning/process-event', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(learningEvent),
           });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to process learning event');
+          }
+
+          const result = await response.json();
+          
+          if (addBreadcrumb) {
+            addBreadcrumb('[learningAnalysis] Neo4j updated', { 
+              lexemeCount: result.lexemesProcessed,
+              userId 
+            });
+          }
+        } catch (error) {
+          console.error('Failed to process learning event:', error);
+          if (addBreadcrumb) {
+            addBreadcrumb('[learningAnalysis] Neo4j failed', { 
+              error: error.message,
+              userId 
+            });
+          }
+          throw error;
         }
       }
 

@@ -21,7 +21,9 @@ export function getDriver(): Driver {
 
 export function getSession(): Session {
   const database = process.env.NEO4J_DATABASE || 'neo4j';
-  return getDriver().session({ database });
+  const session = getDriver().session({ database });
+  console.log('Created Neo4j session for database:', database);
+  return session;
 }
 
 export async function closeDriver(): Promise<void> {

@@ -129,15 +129,28 @@ export async function updateUserProgress(
 }
 
 export async function processLearningEvent(event: LearningEvent): Promise<void> {
+  console.log('Processing learning event:', {
+    userId: event.userId,
+    language: event.language,
+    lexemeCount: event.lexemes.length
+  });
+  
   for (const lexeme of event.lexemes) {
-    await updateUserProgress(
-      event.userId,
-      lexeme.lemma,
-      event.language,
-      lexeme.pos,
-      lexeme.performance,
-      lexeme.confidence
-    );
+    try {
+      console.log('Processing lexeme:', lexeme.lemma, lexeme.performance);
+      await updateUserProgress(
+        event.userId,
+        lexeme.lemma,
+        event.language,
+        lexeme.pos,
+        lexeme.performance,
+        lexeme.confidence
+      );
+      console.log('Successfully processed lexeme:', lexeme.lemma);
+    } catch (error) {
+      console.error('Error processing lexeme:', lexeme.lemma, error);
+      throw error; // Re-throw to surface the specific error
+    }
   }
 }
 
