@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
-    const language = searchParams.get('language') || 'es';
+    const language = searchParams.get('language') || 'ru';
 
     if (!userId) {
       return NextResponse.json(

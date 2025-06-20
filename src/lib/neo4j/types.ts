@@ -15,44 +15,34 @@ export interface Lexeme {
   createdAt?: number;
 }
 
-export interface Form {
-  form: string;              // e.g., "читаю", "дома", "красивая"
-  lemma: string;             // base form this derives from
-  language: string;          // e.g., "ru"
-  pos: string;               // part of speech
-  feats?: string;            // Universal Dependencies format: "Person=1|Number=Sing|Tense=Pres"
-  person?: string;           // for verbs: "1", "2", "3"
-  number?: string;           // "sing", "plur"
-  case?: string;             // for nouns/adjectives: "nom", "acc", "gen", etc.
-  gender?: string;           // for nouns/adjectives: "masc", "fem", "neut"
-  tense?: string;            // for verbs: "pres", "past", "fut"
-  aspect?: string;           // for verbs: "perf", "imperf"
-  mood?: string;             // for verbs: "ind", "imp", "subj"
-  createdAt?: number;
-}
-
-export interface FormProgress {
-  userId: string;            // User ID for data integrity
-  srsLevel: number;          // 1-5 (Leitner box level) for this specific form
-  lastSeen: number;          // timestamp
-  successRate: number;       // 0.0-1.0
-  nextReview: string;        // ISO date string
-  totalEncounters: number;   // total times encountered
-  correctUses: number;       // number of correct uses
-  active: boolean;           // actively being learned
-  createdAt?: number;
-  updatedAt?: number;
+export interface FormStatistics {
+  encounters: number;        // times this form was encountered
+  correct: number;           // times used correctly
+  successRate: number;       // correct/encounters
+  commonErrors?: string[];   // frequent error patterns for this form
+  morphFeatures?: {          // morphological features of this form
+    person?: string;
+    number?: string;
+    case?: string;
+    gender?: string;
+    tense?: string;
+    aspect?: string;
+    mood?: string;
+  };
+  lastSeen?: number;         // timestamp of last encounter
 }
 
 export interface LearningProgress {
   userId: string;            // User ID for data integrity
-  srsLevel: number;          // 1-5 (Leitner box level)
+  srsLevel: number;          // 1-5 (Leitner box level) - overall word mastery
   lastSeen: number;          // timestamp
-  successRate: number;       // 0.0-1.0
+  overallSuccessRate: number; // 0.0-1.0 - weighted average across all forms
   nextReview: string;        // ISO date string
-  totalEncounters: number;   // total times encountered
-  correctUses: number;       // number of correct uses
+  totalEncounters: number;   // total times encountered (sum across forms)
+  correctUses: number;       // total correct uses (sum across forms)
   active: boolean;           // actively being learned
+  formStats: Record<string, FormStatistics>; // form -> statistics mapping
+  weakestForms?: string[];   // forms with lowest success rates
   createdAt?: number;
   updatedAt?: number;
 }
@@ -94,8 +84,8 @@ export interface UserProgressSummary {
   reviewDue: number;
   averageSuccessRate: number;
   lastActivity?: number;
-  // Form-level statistics
-  totalForms: number;
-  knownForms: number;
-  formReviewDue: number;
+  // Form-specific insights from embedded statistics
+  totalFormsTracked: number;   // total number of unique forms encountered
+  formsWithIssues: number;     // forms with success rate < 0.7
+  commonErrorPatterns: string[]; // frequent error types across all words
 }

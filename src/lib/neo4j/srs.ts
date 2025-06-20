@@ -1,5 +1,5 @@
 import { getSession } from './driver';
-import { LearningEvent, PerformanceType, ReviewItem, UserProgressSummary, Form, FormProgress } from './types';
+import { LearningEvent, PerformanceType, ReviewItem, UserProgressSummary, FormStatistics } from './types';
 
 // Simple morphological feature extraction for Russian
 // TODO: Replace with proper morphological analyzer like pymystem3 or natasha
@@ -145,7 +145,9 @@ export async function updateUserProgress(
   language: string, 
   pos: string,
   performance: PerformanceType,
-  _confidence: number = 1.0
+  form: string,
+  morphFeatures?: any,
+  errorContext?: string
 ): Promise<void> {
   const session = getSession();
   
@@ -164,28 +166,58 @@ export async function updateUserProgress(
 
     const existingProgress = result.records[0]?.get('p');
     
+    // Parse existing form statistics or create new
+    let formStats: Record<string, FormStatistics> = {};
     let currentLevel = 1;
-    let totalEncounters = 0;
-    let correctUses = 0;
 
-    if (existingProgress) {
+    if (existingProgress?.properties.formStats) {
+      try {
+        formStats = JSON.parse(existingProgress.properties.formStats);
+      } catch (e) {
+        console.warn('Failed to parse existing formStats, starting fresh');
+      }
       currentLevel = existingProgress.properties.srsLevel || 1;
-      totalEncounters = existingProgress.properties.totalEncounters || 0;
-      correctUses = existingProgress.properties.correctUses || 0;
     }
 
-    // Calculate new stats
+    // Update statistics for the specific form
+    if (!formStats[form]) {
+      formStats[form] = {
+        encounters: 0,
+        correct: 0,
+        successRate: 0,
+        commonErrors: [],
+        morphFeatures,
+        lastSeen: Date.now()
+      };
+    }
+
+    const formStat = formStats[form];
+    formStat.encounters += 1;
+    if (performance === 'correct_use') {
+      formStat.correct += 1;
+    } else if (errorContext && !formStat.commonErrors?.includes(errorContext)) {
+      formStat.commonErrors = formStat.commonErrors || [];
+      formStat.commonErrors.push(errorContext);
+      // Keep only last 5 errors
+      if (formStat.commonErrors.length > 5) {
+        formStat.commonErrors = formStat.commonErrors.slice(-5);
+      }
+    }
+    formStat.successRate = formStat.correct / formStat.encounters;
+    formStat.lastSeen = Date.now();
+
+    // Calculate overall word statistics
+    const overallStats = calculateOverallStats(formStats);
+    
+    // Calculate new SRS level based on overall performance
     const { newLevel, daysToAdd } = calculateNextReview(currentLevel, performance);
-    const newTotalEncounters = totalEncounters + 1;
-    const newCorrectUses = correctUses + (performance === 'correct_use' ? 1 : 0);
-    const successRate = newTotalEncounters > 0 ? newCorrectUses / newTotalEncounters : 0;
     
     // Calculate next review date
     const nextReviewDate = new Date();
     nextReviewDate.setDate(nextReviewDate.getDate() + daysToAdd);
-    const nextReview = nextReviewDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const nextReview = nextReviewDate.toISOString().split('T')[0];
 
-    // Update or create progress
+    // Update or create progress with embedded form statistics
     await session.run(`
       MATCH (u:User {id: $userId})
       MATCH (l:Lexeme {lemma: $lemma, language: $language, pos: $pos})
@@ -193,10 +225,12 @@ export async function updateUserProgress(
       ON CREATE SET p.createdAt = timestamp(), p.userId = $userId
       SET p.srsLevel = $srsLevel,
           p.lastSeen = timestamp(),
-          p.successRate = $successRate,
+          p.overallSuccessRate = $overallSuccessRate,
           p.nextReview = $nextReview,
           p.totalEncounters = $totalEncounters,
-          p.correctUses = $correctUses,
+          p.correctUses = $totalCorrect,
+          p.formStats = $formStats,
+          p.weakestForms = $weakestForms,
           p.active = true,
           p.updatedAt = timestamp(),
           p.userId = $userId
@@ -206,10 +240,12 @@ export async function updateUserProgress(
       language,
       pos,
       srsLevel: newLevel,
-      successRate,
+      overallSuccessRate: overallStats.overallSuccessRate,
       nextReview,
-      totalEncounters: newTotalEncounters,
-      correctUses: newCorrectUses
+      totalEncounters: overallStats.totalEncounters,
+      totalCorrect: overallStats.totalCorrect,
+      formStats: JSON.stringify(formStats),
+      weakestForms: overallStats.weakestForms
     });
 
   } finally {
@@ -217,156 +253,33 @@ export async function updateUserProgress(
   }
 }
 
-// Form-related functions
-export async function ensureForm(form: string, lemma: string, language: string, pos: string, morphFeatures?: any): Promise<void> {
-  const session = getSession();
-  
-  try {
-    // Build morphological feature properties
-    const featsString = morphFeatures ? Object.entries(morphFeatures)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('|') : undefined;
+// Helper function to calculate overall word statistics from form statistics
+function calculateOverallStats(formStats: Record<string, FormStatistics>): {
+  totalEncounters: number;
+  totalCorrect: number;
+  overallSuccessRate: number;
+  weakestForms: string[];
+} {
+  let totalEncounters = 0;
+  let totalCorrect = 0;
+  const formPerformance: Array<{form: string, successRate: number}> = [];
 
-    // Build dynamic SET clause for morphological features
-    const setProperties = ['f.createdAt = timestamp()'];
-    const params: any = { form, lemma, language, pos };
-    
-    if (featsString) {
-      setProperties.push('f.feats = $feats');
-      params.feats = featsString;
-    }
-    
-    if (morphFeatures?.person) {
-      setProperties.push('f.person = $person');
-      params.person = morphFeatures.person;
-    }
-    
-    if (morphFeatures?.number) {
-      setProperties.push('f.number = $number');
-      params.number = morphFeatures.number;
-    }
-    
-    if (morphFeatures?.case) {
-      setProperties.push('f.case = $case');
-      params.case = morphFeatures.case;
-    }
-    
-    if (morphFeatures?.gender) {
-      setProperties.push('f.gender = $gender');
-      params.gender = morphFeatures.gender;
-    }
-    
-    if (morphFeatures?.tense) {
-      setProperties.push('f.tense = $tense');
-      params.tense = morphFeatures.tense;
-    }
-    
-    if (morphFeatures?.aspect) {
-      setProperties.push('f.aspect = $aspect');
-      params.aspect = morphFeatures.aspect;
-    }
-    
-    if (morphFeatures?.mood) {
-      setProperties.push('f.mood = $mood');
-      params.mood = morphFeatures.mood;
-    }
-
-    await session.run(`
-      MERGE (f:Form {form: $form, lemma: $lemma, language: $language, pos: $pos})
-      ON CREATE SET ${setProperties.join(', ')}
-    `, params);
-
-    // Link form to its lexeme
-    await session.run(`
-      MATCH (f:Form {form: $form, lemma: $lemma, language: $language, pos: $pos})
-      MATCH (l:Lexeme {lemma: $lemma, language: $language, pos: $pos})
-      MERGE (f)-[:OF_LEXEME]->(l)
-    `, { form, lemma, language, pos });
-
-  } finally {
-    await session.close();
+  for (const [form, stats] of Object.entries(formStats)) {
+    totalEncounters += stats.encounters;
+    totalCorrect += stats.correct;
+    formPerformance.push({ form, successRate: stats.successRate });
   }
-}
 
-export async function updateFormProgress(
-  userId: string,
-  form: string,
-  lemma: string,
-  language: string,
-  pos: string,
-  performance: PerformanceType,
-  morphFeatures?: any
-): Promise<void> {
-  const session = getSession();
+  const overallSuccessRate = totalEncounters > 0 ? totalCorrect / totalEncounters : 0;
   
-  try {
-    // Ensure user, lexeme, and form exist
-    await ensureUser(userId);
-    await ensureLexeme(lemma, language, pos);
-    await ensureForm(form, lemma, language, pos, morphFeatures);
+  // Find weakest forms (success rate < 0.7)
+  const weakestForms = formPerformance
+    .filter(fp => fp.successRate < 0.7 && fp.successRate > 0)
+    .sort((a, b) => a.successRate - b.successRate)
+    .slice(0, 3)
+    .map(fp => fp.form);
 
-    // Get current form progress
-    const result = await session.run(`
-      MATCH (u:User {id: $userId})
-      MATCH (f:Form {form: $form, lemma: $lemma, language: $language, pos: $pos})
-      OPTIONAL MATCH (u)-[:HAS_FORM_PROGRESS]->(fp:FormProgress)-[:ABOUT_FORM]->(f)
-      RETURN fp
-    `, { userId, form, lemma, language, pos });
-
-    const existingProgress = result.records[0]?.get('fp');
-    
-    let currentLevel = 1;
-    let totalEncounters = 0;
-    let correctUses = 0;
-
-    if (existingProgress) {
-      currentLevel = existingProgress.properties.srsLevel || 1;
-      totalEncounters = existingProgress.properties.totalEncounters || 0;
-      correctUses = existingProgress.properties.correctUses || 0;
-    }
-
-    // Calculate new stats
-    const { newLevel, daysToAdd } = calculateNextReview(currentLevel, performance);
-    const newTotalEncounters = totalEncounters + 1;
-    const newCorrectUses = correctUses + (performance === 'correct_use' ? 1 : 0);
-    const successRate = newTotalEncounters > 0 ? newCorrectUses / newTotalEncounters : 0;
-    
-    // Calculate next review date
-    const nextReviewDate = new Date();
-    nextReviewDate.setDate(nextReviewDate.getDate() + daysToAdd);
-    const nextReview = nextReviewDate.toISOString().split('T')[0];
-
-    // Update or create form progress
-    await session.run(`
-      MATCH (u:User {id: $userId})
-      MATCH (f:Form {form: $form, lemma: $lemma, language: $language, pos: $pos})
-      MERGE (u)-[:HAS_FORM_PROGRESS]->(fp:FormProgress)-[:ABOUT_FORM]->(f)
-      ON CREATE SET fp.createdAt = timestamp(), fp.userId = $userId
-      SET fp.srsLevel = $srsLevel,
-          fp.lastSeen = timestamp(),
-          fp.successRate = $successRate,
-          fp.nextReview = $nextReview,
-          fp.totalEncounters = $totalEncounters,
-          fp.correctUses = $correctUses,
-          fp.active = true,
-          fp.updatedAt = timestamp(),
-          fp.userId = $userId
-    `, {
-      userId,
-      form,
-      lemma,
-      language,
-      pos,
-      srsLevel: newLevel,
-      successRate,
-      nextReview,
-      totalEncounters: newTotalEncounters,
-      correctUses: newCorrectUses
-    });
-
-  } finally {
-    await session.close();
-  }
+  return { totalEncounters, totalCorrect, overallSuccessRate, weakestForms };
 }
 
 export async function processLearningEvent(event: LearningEvent): Promise<void> {
@@ -380,35 +293,39 @@ export async function processLearningEvent(event: LearningEvent): Promise<void> 
     try {
       console.log('Processing lexeme:', lexeme.lemma, 'form:', lexeme.form, 'performance:', lexeme.performance);
       
-      // Update lexeme-level progress (general word knowledge)
+      // Use the form if provided, otherwise use the lemma
+      const formToTrack = lexeme.form || lexeme.lemma;
+      
+      // Extract morphological features if this is a conjugated/declined form
+      let morphFeatures;
+      let errorContext;
+      
+      if (lexeme.form && lexeme.form !== lexeme.lemma) {
+        morphFeatures = extractMorphFeatures(lexeme.lemma, lexeme.form, lexeme.pos);
+        
+        // Generate error context from grammar hints if performance is poor
+        if (lexeme.performance === 'wrong_use' && event.grammarHints?.length) {
+          errorContext = event.grammarHints.find(hint => 
+            hint.toLowerCase().includes('error') || 
+            hint.toLowerCase().includes('wrong') ||
+            hint.toLowerCase().includes('incorrect')
+          ) || 'morphological error';
+        }
+      }
+      
+      // Update unified progress with embedded form statistics
       await updateUserProgress(
         event.userId,
         lexeme.lemma,
         event.language,
         lexeme.pos,
         lexeme.performance,
-        lexeme.confidence
+        formToTrack,
+        morphFeatures,
+        errorContext
       );
-      console.log('Successfully processed lexeme:', lexeme.lemma);
-
-      // Update form-level progress (specific conjugation/declension knowledge)
-      // Only track forms that are different from the lemma (conjugated/declined forms)
-      if (lexeme.form && lexeme.form !== lexeme.lemma) {
-        // For now, we'll extract basic morphological features from context
-        // TODO: Integrate with a Russian morphological analyzer
-        const morphFeatures = extractMorphFeatures(lexeme.lemma, lexeme.form, lexeme.pos);
-        
-        await updateFormProgress(
-          event.userId,
-          lexeme.form,
-          lexeme.lemma,
-          event.language,
-          lexeme.pos,
-          lexeme.performance,
-          morphFeatures
-        );
-        console.log('Successfully processed form:', lexeme.form, 'of', lexeme.lemma);
-      }
+      
+      console.log('Successfully processed word:', lexeme.lemma, 'form:', formToTrack);
     } catch (error) {
       console.error('Error processing lexeme:', lexeme.lemma, error);
       throw error; // Re-throw to surface the specific error
@@ -466,40 +383,73 @@ export async function getUserProgress(userId: string, language: string): Promise
   const session = getSession();
   
   try {
-    // Get lexeme-level progress
-    const lexemeResult = await session.run(`
+    // Get unified progress with embedded form statistics
+    const result = await session.run(`
       MATCH (u:User {id: $userId})-[:HAS_PROGRESS]->(p:LearningProgress)-[:ABOUT]->(l:Lexeme {language: $language})
       WHERE p.active = true AND p.userId = $userId
       RETURN count(p) AS totalWords,
-             count(CASE WHEN p.srsLevel >= 3 AND p.successRate > 0.7 THEN 1 END) AS knownWords,
+             count(CASE WHEN p.srsLevel >= 3 AND p.overallSuccessRate > 0.7 THEN 1 END) AS knownWords,
              count(CASE WHEN p.nextReview <= date() THEN 1 END) AS reviewDue,
-             avg(p.successRate) AS averageSuccessRate,
-             max(p.lastSeen) AS lastActivity
+             avg(p.overallSuccessRate) AS averageSuccessRate,
+             max(p.lastSeen) AS lastActivity,
+             collect(p.formStats) AS allFormStats,
+             collect(p.weakestForms) AS allWeakestForms
     `, { userId, language });
 
-    // Get form-level progress
-    const formResult = await session.run(`
-      MATCH (u:User {id: $userId})-[:HAS_FORM_PROGRESS]->(fp:FormProgress)-[:ABOUT_FORM]->(f:Form {language: $language})
-      WHERE fp.active = true AND fp.userId = $userId
-      RETURN count(fp) AS totalForms,
-             count(CASE WHEN fp.srsLevel >= 3 AND fp.successRate > 0.7 THEN 1 END) AS knownForms,
-             count(CASE WHEN fp.nextReview <= date() THEN 1 END) AS formReviewDue
-    `, { userId, language });
+    const record = result.records[0];
+    
+    // Analyze form statistics across all words
+    let totalFormsTracked = 0;
+    let formsWithIssues = 0;
+    const allErrorPatterns: string[] = [];
 
-    const lexemeRecord = lexemeResult.records[0];
-    const formRecord = formResult.records[0];
+    if (record?.get('allFormStats')) {
+      const formStatsArray = record.get('allFormStats');
+      
+      for (const formStatsJson of formStatsArray) {
+        if (formStatsJson) {
+          try {
+            const formStats = JSON.parse(formStatsJson);
+            totalFormsTracked += Object.keys(formStats).length;
+            
+            for (const [form, stats] of Object.entries(formStats)) {
+              const formStat = stats as FormStatistics;
+              if (formStat.successRate < 0.7) {
+                formsWithIssues++;
+              }
+              if (formStat.commonErrors) {
+                allErrorPatterns.push(...formStat.commonErrors);
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to parse formStats in getUserProgress');
+          }
+        }
+      }
+    }
+
+    // Find most common error patterns
+    const errorPatternCounts: Record<string, number> = {};
+    allErrorPatterns.forEach(error => {
+      errorPatternCounts[error] = (errorPatternCounts[error] || 0) + 1;
+    });
+    
+    const commonErrorPatterns = Object.entries(errorPatternCounts)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([pattern]) => pattern);
     
     return {
       userId,
       language,
-      totalWords: lexemeRecord?.get('totalWords')?.toNumber() || 0,
-      knownWords: lexemeRecord?.get('knownWords')?.toNumber() || 0,
-      reviewDue: lexemeRecord?.get('reviewDue')?.toNumber() || 0,
-      averageSuccessRate: lexemeRecord?.get('averageSuccessRate') || 0,
-      lastActivity: lexemeRecord?.get('lastActivity')?.toNumber(),
-      totalForms: formRecord?.get('totalForms')?.toNumber() || 0,
-      knownForms: formRecord?.get('knownForms')?.toNumber() || 0,
-      formReviewDue: formRecord?.get('formReviewDue')?.toNumber() || 0,
+      totalWords: record?.get('totalWords')?.toNumber() || 0,
+      knownWords: record?.get('knownWords')?.toNumber() || 0,
+      reviewDue: record?.get('reviewDue')?.toNumber() || 0,
+      averageSuccessRate: record?.get('averageSuccessRate') || 0,
+      lastActivity: record?.get('lastActivity')?.toNumber(),
+      totalFormsTracked,
+      formsWithIssues,
+      commonErrorPatterns,
     };
   } finally {
     await session.close();

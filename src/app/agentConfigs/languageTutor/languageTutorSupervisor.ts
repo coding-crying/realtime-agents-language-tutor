@@ -414,17 +414,23 @@ export const triggerLearningAnalysis = tool({
           {
             type: 'message',
             role: 'user',
-            content: `Analyze this user utterance for vocabulary learning:
+            content: `Analyze this conversation for vocabulary learning progress:
 
 User ID: ${userId}
 Target Language: ${targetLanguage}
-User Utterance: "${userUtterance}"
+Primary Focus: "${userUtterance}"
 Immediate Context: ${conversationContext}
 
-Recent Conversation History for Additional Context:
+Recent Conversation History:
 ${JSON.stringify(vocabContextHistory.slice(-10), null, 2)}
 
-Extract meaningful vocabulary items and assess the user's performance with each word. Focus on content words that indicate learning progress.`,
+Instructions: Extract meaningful vocabulary items from the user's utterance and assess performance. Use the conversation context and history to better understand correct vs incorrect usage patterns. Focus on content words (nouns, verbs, adjectives) that indicate learning progress.
+
+Pay special attention to:
+- Grammar errors in verb conjugations, noun cases, adjective agreement
+- Vocabulary usage in context vs previous uses
+- Improvement or regression patterns from conversation history
+- Russian-specific challenges (case system, verb aspects, gender agreement)`,
           },
         ],
       };

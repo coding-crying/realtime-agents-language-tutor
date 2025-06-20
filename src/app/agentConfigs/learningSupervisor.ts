@@ -172,14 +172,19 @@ export const analyzeConversationTurn = tool({
           {
             type: 'message',
             role: 'user',
-            content: `Analyze this user utterance for vocabulary learning:
+            content: `Analyze this conversation for vocabulary learning progress:
 
 User ID: ${userId}
 Target Language: ${targetLanguage}
-User Utterance: "${userUtterance}"
-Context: ${conversationContext}
+Primary Focus: "${userUtterance}"
+Conversation Context: ${conversationContext}
 
-Extract meaningful vocabulary items and assess the user's performance with each word. Focus on content words that indicate learning progress.`,
+Instructions: Extract meaningful vocabulary items from the user's utterance and assess performance. Use the conversation context to better understand correct vs incorrect usage. Focus on content words (nouns, verbs, adjectives) that indicate learning progress.
+
+Pay special attention to:
+- Grammar errors in verb conjugations, noun cases, adjective agreement
+- Vocabulary usage in context
+- Improvement or regression patterns from conversation history`,
           },
         ],
       };

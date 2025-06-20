@@ -15,10 +15,6 @@ export async function initializeSchema(): Promise<void> {
       FOR (l:Lexeme) REQUIRE (l.lemma, l.language, l.pos) IS UNIQUE
     `);
 
-    await session.run(`
-      CREATE CONSTRAINT form_compound_unique IF NOT EXISTS  
-      FOR (f:Form) REQUIRE (f.form, f.lemma, f.language, f.pos) IS UNIQUE
-    `);
 
     // Create indexes for performance
     await session.run(`
@@ -51,26 +47,6 @@ export async function initializeSchema(): Promise<void> {
       FOR (p:LearningProgress) ON (p.userId)
     `);
 
-    // Form and FormProgress indexes
-    await session.run(`
-      CREATE INDEX form_lookup_index IF NOT EXISTS
-      FOR (f:Form) ON (f.language, f.lemma, f.form)
-    `);
-
-    await session.run(`
-      CREATE INDEX form_progress_user_index IF NOT EXISTS
-      FOR (fp:FormProgress) ON (fp.userId)
-    `);
-
-    await session.run(`
-      CREATE INDEX form_progress_review_index IF NOT EXISTS
-      FOR (fp:FormProgress) ON (fp.nextReview)
-    `);
-
-    await session.run(`
-      CREATE INDEX form_progress_active_index IF NOT EXISTS
-      FOR (fp:FormProgress) ON (fp.active)
-    `);
 
     console.log('Neo4j schema initialized successfully');
   } catch (error) {
