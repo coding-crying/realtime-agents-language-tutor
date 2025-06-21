@@ -1,229 +1,247 @@
-# Realtime API Agents Demo
+# Realtime Language Tutoring System
 
-This is a demonstration of more advanced patterns for voice agents, using the OpenAI Realtime API and the OpenAI Agents SDK. 
+A comprehensive language learning application that combines OpenAI's Realtime API with intelligent spaced repetition system (SRS) memory modeling to create personalized, adaptive language tutoring conversations. The system uses Neo4j graph database to track vocabulary progress and morphological understanding, informing real-time conversation agents about optimal learning content.
 
-## About the OpenAI Agents SDK
+## About This Application
 
-This project uses the [OpenAI Agents SDK](https://github.com/openai/openai-agents-js), a toolkit for building, managing, and deploying advanced AI agents. The SDK provides:
+This application demonstrates advanced patterns for voice-based language learning agents, featuring:
 
-- A unified interface for defining agent behaviors and tool integrations.
-- Built-in support for agent orchestration, state management, and event handling.
-- Easy integration with the OpenAI Realtime API for low-latency, streaming interactions.
-- Extensible patterns for multi-agent collaboration, handoffs, tool use, and guardrails.
+- **Intelligent Conversation Agents**: Using OpenAI Realtime API for natural, low-latency voice interactions
+- **Spaced Repetition System**: Neo4j-powered vocabulary tracking with morphological analysis
+- **Adaptive Learning**: Real-time conversation adjustment based on user progress and SRS data
+- **Russian Language Focus**: Specialized morphological analysis for Russian grammar patterns
+- **Dual-Agent Architecture**: Chat agents for conversation + supervisor agents for learning analysis
 
-For full documentation, guides, and API references, see the official [OpenAI Agents SDK Documentation](https://github.com/openai/openai-agents-js#readme).
+The system tracks vocabulary usage, grammatical form accuracy, and learning patterns to create personalized tutoring experiences that adapt to each user's proficiency level and learning needs.
 
-**NOTE:** For a version that does not use the OpenAI Agents SDK, see the [branch without-agents-sdk](https://github.com/openai/openai-realtime-agents/tree/without-agents-sdk).
+## Architecture Overview
 
-There are two main patterns demonstrated:
-1. **Chat-Supervisor:** A realtime-based chat agent interacts with the user and handles basic tasks, while a more intelligent, text-based supervisor model (e.g., `gpt-4.1`) is used extensively for tool calls and more complex responses. This approach provides an easy onramp and high-quality answers, with a small increase in latency.
-2. **Sequential Handoff:** Specialized agents (powered by realtime api) transfer the user between them to handle specific user intents. This is great for customer service, where user intents can be handled sequentially by specialist models that excel in a specific domains. This helps avoid the model having all instructions and tools in a single agent, which can degrade performance.
+### Core Components
+
+1. **Language Tutor Agent** (`languageTutorSupervisor.ts`): Handles real-time conversation with SRS-informed vocabulary selection
+2. **Learning Analysis Agent** (`learningSupervisor.ts`): Analyzes conversation turns for vocabulary learning insights
+3. **Neo4j SRS System** (`lib/neo4j/srs.ts`): Tracks vocabulary progress with embedded form statistics
+4. **Morphological Analysis**: Russian-specific grammar pattern recognition and error tracking
+
+### Database Schema
+
+The system uses a simplified Neo4j schema with embedded form statistics:
+
+```
+User -[:HAS_PROGRESS]-> LearningProgress -[:ABOUT]-> Lexeme
+```
+
+**LearningProgress** nodes contain:
+- `srsLevel`: Spaced repetition level (1-5)
+- `overallSuccessRate`: Overall word mastery percentage
+- `formStats`: JSON object tracking individual conjugated/declined forms
+- `weakestForms`: Array of forms needing more practice
+- `nextReview`: When the word is due for review
 
 ## Setup
 
-- This is a Next.js typescript app. Install dependencies with `npm i`.
-- Add your `OPENAI_API_KEY` to your env. Either add it to your `.bash_profile` or equivalent, or copy `.env.sample` to `.env` and add it there.
-- Start the server with `npm run dev`
-- Open your browser to [http://localhost:3000](http://localhost:3000). It should default to the `chatSupervisor` Agent Config.
-- You can change examples via the "Scenario" dropdown in the top right.
+### Prerequisites
+- Node.js 18+
+- Neo4j instance (local or cloud)
+- OpenAI API key
 
-# Agentic Pattern 1: Chat-Supervisor
+### Installation
 
-This is demonstrated in the [chatSupervisor](src/app/agentConfigs/chatSupervisor/index.ts) Agent Config. The chat agent uses the realtime model to converse with the user and handle basic tasks, like greeting the user, casual conversation, and collecting information, and a more intelligent, text-based supervisor model (e.g. `gpt-4.1`) is used extensively to handle tool calls and more challenging responses. You can control the decision boundary by "opting in" specific tasks to the chat agent as desired.
-
-Video walkthrough: [https://x.com/noahmacca/status/1927014156152058075](https://x.com/noahmacca/status/1927014156152058075)
-
-## Example
-![Screenshot of the Chat Supervisor Flow](/public/screenshot_chat_supervisor.png)
-*In this exchange, note the immediate response to collect the phone number, and the deferral to the supervisor agent to handle the tool call and formulate the response. There ~2s between the end of "give me a moment to check on that." being spoken aloud and the start of the "Thanks for waiting. Your last bill...".*
-
-## Schematic
-```mermaid
-sequenceDiagram
-    participant User
-    participant ChatAgent as Chat Agent<br/>(gpt-4o-realtime-mini)
-    participant Supervisor as Supervisor Agent<br/>(gpt-4.1)
-    participant Tool as Tool
-
-    alt Basic chat or info collection
-        User->>ChatAgent: User message
-        ChatAgent->>User: Responds directly
-    else Requires higher intelligence and/or tool call
-        User->>ChatAgent: User message
-        ChatAgent->>User: "Let me think"
-        ChatAgent->>Supervisor: Forwards message/context
-        alt Tool call needed
-            Supervisor->>Tool: Calls tool
-            Tool->>Supervisor: Returns result
-        end
-        Supervisor->>ChatAgent: Returns response
-        ChatAgent->>User: Delivers response
-    end
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd realtime-agents-language-tutor
 ```
 
-## Benefits
-- **Simpler onboarding.** If you already have a performant text-based chat agent, you can give that same prompt and set of tools to the supervisor agent, and make some tweaks to the chat agent prompt, you'll have a natural voice agent that will perform on par with your text agent.
-- **Simple ramp to a full realtime agent**: Rather than switching your whole agent to the realtime api, you can move one task at a time, taking time to validate and build trust for each before deploying to production.
-- **High intelligence**: You benefit from the high intelligence, excellent tool calling and instruction following of models like `gpt-4.1` in your voice agents.
-- **Lower cost**: If your chat agent is only being used for basic tasks, you can use the realtime-mini model, which, even when combined with GPT-4.1, should be cheaper than using the full 4o-realtime model.
-- **User experience**: It's a more natural conversational experience than using a stitched model architecture, where response latency is often 1.5s or longer after a user has finished speaking. In this architecture, the model responds to the user right away, even if it has to lean on the supervisor agent.
-  - However, more assistant responses will start with "Let me think", rather than responding immediately with the full response.
-
-## Modifying for your own agent
-1. Update [supervisorAgent](src/app/agentConfigs/chatSupervisorDemo/supervisorAgent.ts).
-  - Add your existing text agent prompt and tools if you already have them. This should contain the "meat" of your voice agent logic and be very specific with what it should/shouldn't do and how exactly it should respond. Add this information below `==== Domain-Specific Agent Instructions ====`.
-  - You should likely update this prompt to be more appropriate for voice, for example with instructions to be concise and avoiding long lists of items.
-2. Update [chatAgent](src/app/agentConfigs/chatSupervisor/index.ts).
-  - Customize the chatAgent instructions with your own tone, greeting, etc.
-  - Add your tool definitions to `chatAgentInstructions`. We recommend a brief yaml description rather than json to ensure the model doesn't get confused and try calling the tool directly.
-  - You can modify the decision boundary by adding new items to the `# Allow List of Permitted Actions` section.
-3. To reduce cost, try using `gpt-4o-mini-realtime` for the chatAgent and/or `gpt-4.1-mini` for the supervisor model. To maximize intelligence on particularly difficult or high-stakes tasks, consider trading off latency and adding chain-of-thought to your supervisor prompt, or using an additional reasoning model-based supervisor that uses `o4-mini`.
-
-# Agentic Pattern 2: Sequential Handoffs
-
-This pattern is inspired by [OpenAI Swarm](https://github.com/openai/swarm) and involves the sequential handoff of a user between specialized agents. Handoffs are decided by the model and coordinated via tool calls, and possible handoffs are defined explicitly in an agent graph. A handoff triggers a session.update event with new instructions and tools. This pattern is effective for handling a variety of user intents with specialist agents, each of which might have long instructions and numerous tools.
-
-Here's a [video walkthrough](https://x.com/OpenAIDevs/status/1880306081517432936) showing how it works. You should be able to use this repo to prototype your own multi-agent realtime voice app in less than 20 minutes!
-
-![Screenshot of the Realtime API Agents Demo](/public/screenshot_handoff.png)
-*In this simple example, the user is transferred from a greeter agent to a haiku agent. See below for the simple, full configuration of this flow.*
-
-Configuration in `src/app/agentConfigs/simpleExample.ts`
-```typescript
-import { RealtimeAgent } from '@openai/agents/realtime';
-
-// Define agents using the OpenAI Agents SDK
-export const haikuWriterAgent = new RealtimeAgent({
-  name: 'haikuWriter',
-  handoffDescription: 'Agent that writes haikus.', // Context for the agent_transfer tool
-  instructions:
-    'Ask the user for a topic, then reply with a haiku about that topic.',
-  tools: [],
-  handoffs: [],
-});
-
-export const greeterAgent = new RealtimeAgent({
-  name: 'greeter',
-  handoffDescription: 'Agent that greets the user.',
-  instructions:
-    "Please greet the user and ask them if they'd like a haiku. If yes, hand off to the 'haikuWriter' agent.",
-  tools: [],
-  handoffs: [haikuWriterAgent], // Define which agents this agent can hand off to
-});
-
-// An Agent Set is just an array of the agents that participate in the scenario
-export default [greeterAgent, haikuWriterAgent];
-```
-## CustomerServiceRetail Flow
-
-This is a more complex, representative implementation that illustrates a customer service flow, with the following features:
-- A more complex agent graph with agents for user authentication, returns, sales, and a placeholder human agent for escalations.
-- An escalation by the [returns](https://github.com/openai/openai-realtime-agents/blob/60f4effc50a539b19b2f1fa4c38846086b58c295/src/app/agentConfigs/customerServiceRetail/returns.ts#L233) agent to `o4-mini` to validate and initiate a return, as an example high-stakes decision, using a similar pattern to the above.
-- Prompting models to follow a state machine, for example to accurately collect things like names and phone numbers with confirmation character by character to authenticate a user.
-  - To test this flow, say that you'd like to return your snowboard and go through the necessary prompts!
-
-Configuration in [src/app/agentConfigs/customerServiceRetail/index.ts](src/app/agentConfigs/customerServiceRetail/index.ts).
-```javascript
-import authentication from "./authentication";
-import returns from "./returns";
-import sales from "./sales";
-import simulatedHuman from "./simulatedHuman";
-import { injectTransferTools } from "../utils";
-
-authentication.downstreamAgents = [returns, sales, simulatedHuman];
-returns.downstreamAgents = [authentication, sales, simulatedHuman];
-sales.downstreamAgents = [authentication, returns, simulatedHuman];
-simulatedHuman.downstreamAgents = [authentication, returns, sales];
-
-const agents = injectTransferTools([
-  authentication,
-  returns,
-  sales,
-  simulatedHuman,
-]);
-
-export default agents;
+2. Install dependencies:
+```bash
+npm install
 ```
 
-## Schematic
+3. Configure environment variables:
+```bash
+cp .env.example .env
+```
 
-This diagram illustrates a more advanced interaction flow defined in `src/app/agentConfigs/customerServiceRetail/`, including detailed events.
+Edit `.env` with your credentials:
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_password
+```
 
-<details>
-<summary><strong>Show CustomerServiceRetail Flow Diagram</strong></summary>
+4. Initialize Neo4j database:
+```bash
+npm run dev
+# Navigate to http://localhost:3000/api/neo4j/init
+```
+
+5. Start the development server:
+```bash
+npm run dev
+```
+
+6. Open [http://localhost:3000](http://localhost:3000) and select "Language Tutor" from the scenario dropdown.
+
+## How It Works
+
+### Conversation Flow
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant WebClient as Next.js Client
-    participant NextAPI as /api/session
-    participant RealtimeAPI as OpenAI Realtime API
-    participant AgentManager as Agents (authentication, returns, sales, simulatedHuman)
-    participant o1mini as "o4-mini" (Escalation Model)
+    participant ChatAgent as Language Tutor<br/>(gpt-4o-realtime-mini)
+    participant Supervisor as Learning Supervisor<br/>(gpt-4.1-mini)
+    participant Neo4j as SRS Database
+    participant Analysis as Learning Analysis<br/>(gpt-4.1-mini)
 
-    Note over WebClient: User navigates to ?agentConfig=customerServiceRetail
-    User->>WebClient: Open Page
-    WebClient->>NextAPI: GET /api/session
-    NextAPI->>RealtimeAPI: POST /v1/realtime/sessions
-    RealtimeAPI->>NextAPI: Returns ephemeral session
-    NextAPI->>WebClient: Returns ephemeral token (JSON)
-
-    Note right of WebClient: Start RTC handshake
-    WebClient->>RealtimeAPI: Offer SDP (WebRTC)
-    RealtimeAPI->>WebClient: SDP answer
-    WebClient->>WebClient: DataChannel "oai-events" established
-
-    Note over AgentManager: Default agent is "authentication"
-    User->>WebClient: "Hi, I'd like to return my snowboard."
-    WebClient->>AgentManager: conversation.item.create (role=user)
-    WebClient->>RealtimeAPI: {type: "conversation.item.create"}
-    WebClient->>RealtimeAPI: {type: "response.create"}
-
-    authentication->>AgentManager: Requests user info, calls authenticate_user_information()
-    AgentManager-->>WebClient: function_call => name="authenticate_user_information"
-    WebClient->>WebClient: handleFunctionCall => verifies details
-
-    Note over AgentManager: After user is authenticated
-    authentication->>AgentManager: transferAgents("returns")
-    AgentManager-->>WebClient: function_call => name="transferAgents" args={ destination: "returns" }
-    WebClient->>WebClient: setSelectedAgentName("returns")
-
-    Note over returns: The user wants to process a return
-    returns->>AgentManager: function_call => checkEligibilityAndPossiblyInitiateReturn
-    AgentManager-->>WebClient: function_call => name="checkEligibilityAndPossiblyInitiateReturn"
-
-    Note over WebClient: The WebClient calls /api/chat/completions with model="o4-mini"
-    WebClient->>o1mini: "Is this item eligible for return?"
-    o1mini->>WebClient: "Yes/No (plus notes)"
-
-    Note right of returns: Returns uses the result from "o4-mini"
-    returns->>AgentManager: "Return is approved" or "Return is denied"
-    AgentManager->>WebClient: conversation.item.create (assistant role)
-    WebClient->>User: Displays final verdict
+    User->>ChatAgent: Russian phrase/sentence
+    ChatAgent->>Supervisor: Get intelligent tutoring response
+    Supervisor->>Neo4j: Query known words & review due
+    Neo4j->>Supervisor: User progress data
+    Supervisor->>ChatAgent: Personalized response with SRS vocab
+    ChatAgent->>User: Adaptive tutoring response
+    
+    Note over Analysis: Background learning analysis
+    ChatAgent->>Analysis: Trigger learning analysis
+    Analysis->>Analysis: Extract vocabulary & assess performance
+    Analysis->>Neo4j: Update progress with morphological features
+    Neo4j->>Neo4j: Update SRS levels & form statistics
 ```
 
-</details>
+### SRS Memory Modeling
 
-# Other Info
-## Next Steps
-- You can copy these templates to make your own multi-agent voice app! Once you make a new agent set config, add it to `src/app/agentConfigs/index.ts` and you should be able to select it in the UI in the "Scenario" dropdown menu.
-- Each agentConfig can define instructions, tools, and toolLogic. By default all tool calls simply return `True`, unless you define the toolLogic, which will run your specific tool logic and return an object to the conversation (e.g. for retrieved RAG context).
-- If you want help creating your own prompt using the conventions shown in customerServiceRetail, including defining a state machine, we've included a metaprompt [here](src/app/agentConfigs/voiceAgentMetaprompt.txt), or you can use our [Voice Agent Metaprompter GPT](https://chatgpt.com/g/g-678865c9fb5c81918fa28699735dd08e-voice-agent-metaprompt-gpt)
+The system tracks vocabulary at both lexeme and form levels:
 
-## Output Guardrails
-Assistant messages are checked for safety and compliance before they are shown in the UI.  The guardrail call now lives directly inside `src/app/App.tsx`: when a `response.text.delta` stream starts we mark the message as **IN_PROGRESS**, and once the server emits `guardrail_tripped` or `response.done` we mark the message as **FAIL** or **PASS** respectively.  If you want to change how moderation is triggered or displayed, search for `guardrail_tripped` inside `App.tsx` and tweak the logic there.
+1. **Lexeme Level**: Root word progress (e.g., "читать" - to read)
+2. **Form Level**: Conjugated/declined forms (e.g., "читаю", "читаешь", "читает")
+3. **Morphological Features**: Person, number, case, gender, tense, aspect
+4. **Error Patterns**: Common mistakes tracked per form
 
-## Navigating the UI
-- You can select agent scenarios in the Scenario dropdown, and automatically switch to a specific agent with the Agent dropdown.
-- The conversation transcript is on the left, including tool calls, tool call responses, and agent changes. Click to expand non-message elements.
-- The event log is on the right, showing both client and server events. Click to see the full payload.
-- On the bottom, you can disconnect, toggle between automated voice-activity detection or PTT, turn off audio playback, and toggle logs.
+### Learning Analysis
 
-## Pull Requests
+The system analyzes conversation turns to:
+- Extract meaningful vocabulary usage
+- Assess grammatical accuracy
+- Identify error patterns
+- Update SRS scheduling
+- Track morphological understanding
 
-Feel free to open an issue or pull request and we'll do our best to review it. The spirit of this repo is to demonstrate the core logic for new agentic flows; PRs that go beyond this core scope will likely not be merged.
+## Key Features
 
-# Core Contributors
-- Noah MacCallum - [noahmacca](https://x.com/noahmacca)
-- Ilan Bigio - [ibigio](https://github.com/ibigio)
-- Brian Fioca - [bfioca](https://github.com/bfioca)
+### Intelligent Vocabulary Selection
+- Prioritizes words due for review in conversations
+- Introduces new vocabulary at appropriate difficulty levels
+- Adapts complexity based on demonstrated proficiency
+
+### Morphological Analysis
+- Tracks Russian verb conjugations (person, number, tense, aspect)
+- Monitors noun declensions (case, number, gender)
+- Analyzes adjective agreement patterns
+- Records form-specific error patterns
+
+### Spaced Repetition
+- Leitner box system with 5 SRS levels
+- Dynamic scheduling based on performance
+- Form-specific success rate tracking
+- Weakest forms identification for focused practice
+
+### Conversation Memory
+- Maintains conversation history for context
+- Uses sliding window for vocabulary analysis
+- Incorporates error patterns into tutoring decisions
+
+## Configuration
+
+### Agent Configs
+
+The system uses two main agent configurations:
+
+1. **Language Tutor Agent** (`src/app/agentConfigs/languageTutor/index.ts`):
+   - Real-time conversation handling
+   - SRS-informed vocabulary selection
+   - Adaptive difficulty adjustment
+
+2. **Learning Supervisor** (`src/app/agentConfigs/learningSupervisor.ts`):
+   - Background learning analysis
+   - Morphological feature extraction
+   - SRS database updates
+
+### Customization
+
+To adapt for different languages:
+
+1. Update morphological analysis in `src/lib/neo4j/srs.ts`
+2. Modify language-specific prompts in agent configs
+3. Adjust SRS parameters for language complexity
+4. Update API language defaults
+
+## API Endpoints
+
+- `POST /api/learning/process-event` - Process learning events
+- `GET /api/learning/progress` - Get user progress summary
+- `GET /api/learning/review-due` - Get words due for review
+- `GET /api/learning/known-words` - Get user's known vocabulary
+- `POST /api/neo4j/init` - Initialize database schema
+
+## Development Tools
+
+### Testing
+- `test-simplified-system.js` - Test SRS system with sample data
+- `cleanup-old-nodes.js` - Clean up old database nodes
+
+### Database Management
+- Built-in schema initialization
+- Automated cleanup scripts
+- Progress tracking utilities
+
+## Performance Considerations
+
+- **Real-time Response**: Chat agent provides immediate feedback
+- **Background Analysis**: Learning analysis runs asynchronously
+- **SRS Optimization**: Embedded form statistics reduce query complexity
+- **Conversation Memory**: Sliding window prevents context overflow
+
+## Limitations & Future Enhancements
+
+### Current Limitations
+- Basic morphological analysis (rule-based)
+- Limited to Russian language
+- Minimal frontend design
+- No user authentication system
+
+### Potential Enhancements
+- Advanced morphological analyzers (pymystem3, natasha)
+- Multi-language support
+- User interface improvements
+- Audio pronunciation analysis
+- Writing practice integration
+- Progress visualization
+
+## Contributing
+
+The system is designed to be extensible. Key areas for contribution:
+
+1. **Language Support**: Add morphological analysis for other languages
+2. **UI/UX**: Improve frontend design and user experience
+3. **Analytics**: Enhanced learning progress visualization
+4. **SRS Algorithms**: Alternative spaced repetition implementations
+5. **Assessment**: More sophisticated proficiency evaluation
+
+## Technical Stack
+
+- **Frontend**: Next.js 14, TypeScript, React
+- **Backend**: Next.js API routes
+- **Database**: Neo4j graph database
+- **AI**: OpenAI Realtime API, GPT-4.1-mini
+- **Voice**: WebRTC, OpenAI Realtime API
+- **Language Processing**: Custom Russian morphological analysis
+
+## License
+
+This project demonstrates advanced patterns for voice-based language learning applications. Feel free to use as a foundation for your own language tutoring systems.
+
+---
+
+*Note: This application focuses on backend architecture and learning algorithms. Frontend design is minimal but functional. The system provides a complete foundation for building sophisticated language learning applications.*
