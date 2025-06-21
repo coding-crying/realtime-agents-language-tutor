@@ -1,93 +1,6 @@
 import { getSession } from './driver';
 import { LearningEvent, PerformanceType, ReviewItem, UserProgressSummary, FormStatistics } from './types';
-
-// Simple morphological feature extraction for Russian
-// TODO: Replace with proper morphological analyzer like pymystem3 or natasha
-function extractMorphFeatures(lemma: string, form: string, pos: string): any {
-  const features: any = {};
-  
-  if (pos === 'VERB') {
-    // Basic verb conjugation patterns
-    if (form.endsWith('ю') || form.endsWith('у')) {
-      features.person = '1';
-      features.number = 'sing';
-      features.tense = 'pres';
-    } else if (form.endsWith('ешь') || form.endsWith('ишь')) {
-      features.person = '2';
-      features.number = 'sing';
-      features.tense = 'pres';
-    } else if (form.endsWith('ет') || form.endsWith('ит')) {
-      features.person = '3';
-      features.number = 'sing';
-      features.tense = 'pres';
-    } else if (form.endsWith('ем') || form.endsWith('им')) {
-      features.person = '1';
-      features.number = 'plur';
-      features.tense = 'pres';
-    } else if (form.endsWith('ете') || form.endsWith('ите')) {
-      features.person = '2';
-      features.number = 'plur';
-      features.tense = 'pres';
-    } else if (form.endsWith('ют') || form.endsWith('ат') || form.endsWith('ят')) {
-      features.person = '3';
-      features.number = 'plur';
-      features.tense = 'pres';
-    } else if (form.endsWith('л') || form.endsWith('ла') || form.endsWith('ло') || form.endsWith('ли')) {
-      features.tense = 'past';
-      if (form.endsWith('л')) features.gender = 'masc';
-      else if (form.endsWith('ла')) features.gender = 'fem';
-      else if (form.endsWith('ло')) features.gender = 'neut';
-      else if (form.endsWith('ли')) features.number = 'plur';
-    }
-  } else if (pos === 'NOUN') {
-    // Basic noun declension patterns
-    if (form.endsWith('ы') || form.endsWith('и')) {
-      features.number = 'plur';
-      features.case = 'nom'; // or gen sing for some patterns
-    } else if (form.endsWith('ов') || form.endsWith('ев') || form.endsWith('ей')) {
-      features.number = 'plur';
-      features.case = 'gen';
-    } else if (form.endsWith('ам') || form.endsWith('ям')) {
-      features.number = 'plur';
-      features.case = 'dat';
-    } else if (form.endsWith('ами') || form.endsWith('ями')) {
-      features.number = 'plur';
-      features.case = 'ins';
-    } else if (form.endsWith('ах') || form.endsWith('ях')) {
-      features.number = 'plur';
-      features.case = 'loc';
-    } else if (form.endsWith('у') || form.endsWith('ю')) {
-      features.number = 'sing';
-      features.case = 'acc'; // or dat for some patterns
-    } else if (form.endsWith('ом') || form.endsWith('ем')) {
-      features.number = 'sing';
-      features.case = 'ins';
-    } else if (form.endsWith('е')) {
-      features.number = 'sing';
-      features.case = 'loc'; // or dat
-    }
-  } else if (pos === 'ADJ') {
-    // Basic adjective agreement patterns
-    if (form.endsWith('ая')) {
-      features.gender = 'fem';
-      features.number = 'sing';
-      features.case = 'nom';
-    } else if (form.endsWith('ое') || form.endsWith('ее')) {
-      features.gender = 'neut';
-      features.number = 'sing';
-      features.case = 'nom';
-    } else if (form.endsWith('ые') || form.endsWith('ие')) {
-      features.number = 'plur';
-      features.case = 'nom';
-    } else if (form.endsWith('ую') || form.endsWith('юю')) {
-      features.gender = 'fem';
-      features.number = 'sing';
-      features.case = 'acc';
-    }
-  }
-  
-  return features;
-}
+import { extractMorphFeatures as extractLanguageMorphFeatures } from '../languages';
 
 // SRS interval calculation (Leitner box system)
 export function calculateNextReview(srsLevel: number, performance: PerformanceType): { newLevel: number; daysToAdd: number } {
@@ -301,7 +214,7 @@ export async function processLearningEvent(event: LearningEvent): Promise<void> 
       let errorContext;
       
       if (lexeme.form && lexeme.form !== lexeme.lemma) {
-        morphFeatures = extractMorphFeatures(lexeme.lemma, lexeme.form, lexeme.pos);
+        morphFeatures = extractLanguageMorphFeatures(lexeme.lemma, lexeme.form, lexeme.pos, event.language);
         
         // Generate error context from grammar hints if performance is poor
         if (lexeme.performance === 'wrong_use' && event.grammarHints?.length) {

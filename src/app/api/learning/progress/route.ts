@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserProgress } from '../../../../lib/neo4j/srs';
+import { DEFAULT_LANGUAGE } from '../../../../lib/languages';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId');
-    const language = searchParams.get('language') || 'ru';
+    const language = searchParams.get('language') || DEFAULT_LANGUAGE;
 
     if (!userId) {
       return NextResponse.json(

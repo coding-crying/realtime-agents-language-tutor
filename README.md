@@ -1,6 +1,6 @@
 # Realtime Language Tutoring System
 
-A comprehensive language learning application that combines OpenAI's Realtime API with intelligent spaced repetition system (SRS) memory modeling to create personalized, adaptive language tutoring conversations. The system uses Neo4j graph database to track vocabulary progress and morphological understanding, informing real-time conversation agents about optimal learning content.
+A comprehensive, multi-language learning application that combines OpenAI's Realtime API with intelligent spaced repetition system (SRS) memory modeling to create personalized, adaptive language tutoring conversations. The system uses Neo4j graph database to track vocabulary progress and morphological understanding, informing real-time conversation agents about optimal learning content.
 
 ## About This Application
 
@@ -9,7 +9,7 @@ This application demonstrates advanced patterns for voice-based language learnin
 - **Intelligent Conversation Agents**: Using OpenAI Realtime API for natural, low-latency voice interactions
 - **Spaced Repetition System**: Neo4j-powered vocabulary tracking with morphological analysis
 - **Adaptive Learning**: Real-time conversation adjustment based on user progress and SRS data
-- **Russian Language Focus**: Specialized morphological analysis for Russian grammar patterns
+- **Multi-Language Support**: Configurable morphological analysis for multiple languages (Russian, Spanish, extensible)
 - **Dual-Agent Architecture**: Chat agents for conversation + supervisor agents for learning analysis
 
 The system tracks vocabulary usage, grammatical form accuracy, and learning patterns to create personalized tutoring experiences that adapt to each user's proficiency level and learning needs.
@@ -21,7 +21,7 @@ The system tracks vocabulary usage, grammatical form accuracy, and learning patt
 1. **Language Tutor Agent** (`languageTutorSupervisor.ts`): Handles real-time conversation with SRS-informed vocabulary selection
 2. **Learning Analysis Agent** (`learningSupervisor.ts`): Analyzes conversation turns for vocabulary learning insights
 3. **Neo4j SRS System** (`lib/neo4j/srs.ts`): Tracks vocabulary progress with embedded form statistics
-4. **Morphological Analysis**: Russian-specific grammar pattern recognition and error tracking
+4. **Language Configuration System** (`lib/languages/`): Configurable morphological analysis for multiple languages
 
 ### Database Schema
 
@@ -96,7 +96,7 @@ sequenceDiagram
     participant Neo4j as SRS Database
     participant Analysis as Learning Analysis<br/>(gpt-4.1-mini)
 
-    User->>ChatAgent: Russian phrase/sentence
+    User->>ChatAgent: Target language phrase/sentence
     ChatAgent->>Supervisor: Get intelligent tutoring response
     Supervisor->>Neo4j: Query known words & review due
     Neo4j->>Supervisor: User progress data
@@ -136,10 +136,10 @@ The system analyzes conversation turns to:
 - Adapts complexity based on demonstrated proficiency
 
 ### Morphological Analysis
-- Tracks Russian verb conjugations (person, number, tense, aspect)
-- Monitors noun declensions (case, number, gender)
-- Analyzes adjective agreement patterns
-- Records form-specific error patterns
+- Configurable language-specific grammar pattern recognition
+- Tracks verb conjugations, noun declensions, adjective agreements
+- Supports multiple languages through modular configuration
+- Records form-specific error patterns per language
 
 ### Spaced Repetition
 - Leitner box system with 5 SRS levels
@@ -170,12 +170,37 @@ The system uses two main agent configurations:
 
 ### Customization
 
-To adapt for different languages:
+## Supported Languages
 
-1. Update morphological analysis in `src/lib/neo4j/srs.ts`
-2. Modify language-specific prompts in agent configs
-3. Adjust SRS parameters for language complexity
-4. Update API language defaults
+Currently supported languages:
+- **Russian (ru)**: Full morphological analysis for Cyrillic script
+- **Spanish (es)**: Comprehensive verb conjugation and noun-adjective agreement
+
+## Adding New Languages
+
+To add support for a new language:
+
+1. Create a language configuration file in `src/lib/languages/[language].ts`
+2. Define morphological patterns for verbs, nouns, adjectives
+3. Add teaching strategies for different proficiency levels
+4. Include grammar examples (correct and incorrect usage)
+5. Register the language in `src/lib/languages/index.ts`
+
+Example language configuration structure:
+```typescript
+export const newLanguageConfig: LanguageConfig = {
+  code: 'fr',
+  name: 'French',
+  nativeName: 'Français',
+  morphology: {
+    verbs: [/* conjugation patterns */],
+    nouns: [/* declension patterns */],
+    adjectives: [/* agreement patterns */]
+  },
+  teachingStrategies: {/* proficiency-based strategies */},
+  grammarExamples: {/* correct/incorrect examples */}
+};
+```
 
 ## API Endpoints
 
@@ -188,7 +213,7 @@ To adapt for different languages:
 ## Development Tools
 
 ### Testing
-- `test-simplified-system.js` - Test SRS system with sample data
+- `test-simplified-system.js` - Test SRS system with multi-language sample data
 - `cleanup-old-nodes.js` - Clean up old database nodes
 
 ### Database Management
@@ -206,18 +231,18 @@ To adapt for different languages:
 ## Limitations & Future Enhancements
 
 ### Current Limitations
-- Basic morphological analysis (rule-based)
-- Limited to Russian language
+- Rule-based morphological analysis (not ML-based)
+- Limited to Russian and Spanish (easily extensible)
 - Minimal frontend design
 - No user authentication system
 
 ### Potential Enhancements
-- Advanced morphological analyzers (pymystem3, natasha)
-- Multi-language support
-- User interface improvements
+- Advanced morphological analyzers (ML-based: pymystem3, natasha, spaCy)
+- Additional language support (French, German, Mandarin, etc.)
+- User interface improvements and language selection
 - Audio pronunciation analysis
 - Writing practice integration
-- Progress visualization
+- Progress visualization and analytics
 
 ## Contributing
 
@@ -236,7 +261,7 @@ The system is designed to be extensible. Key areas for contribution:
 - **Database**: Neo4j graph database
 - **AI**: OpenAI Realtime API, GPT-4.1-mini
 - **Voice**: WebRTC, OpenAI Realtime API
-- **Language Processing**: Custom Russian morphological analysis
+- **Language Processing**: Configurable morphological analysis system
 
 ## License
 

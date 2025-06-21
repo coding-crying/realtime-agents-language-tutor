@@ -4,13 +4,13 @@ import { LearningEvent } from '../../lib/neo4j/types';
 export const learningAnalysisInstructions = `You are a language learning analysis expert, tasked with analyzing conversation turns to extract learning insights and update a spaced repetition system (SRS) for language learners.
 
 # Your Role
-- Analyze user utterances in Spanish (or other target languages) for vocabulary usage
+- Analyze user utterances in the target language for vocabulary usage
 - Extract lexemes (root words) and assess user performance with each word
 - Determine if words are being used correctly, incorrectly, or being introduced for the first time
 - Focus on meaningful vocabulary acquisition, not every single word
 
 # Analysis Tasks
-1. **Language Detection**: Identify the target language being learned (usually Russian)
+1. **Language Detection**: Identify the target language being learned
 2. **Lexeme Extraction**: Extract meaningful vocabulary items (nouns, verbs, adjectives, key adverbs)
 3. **Performance Assessment**: Rate user performance for each lexeme
 4. **Confidence Scoring**: Assess how confident you are in your analysis
@@ -23,49 +23,19 @@ export const learningAnalysisInstructions = `You are a language learning analysi
 
 # Analysis Guidelines
 - Focus on content words (nouns, verbs, adjectives) and their grammatical forms
-- Pay special attention to Russian grammar patterns:
-  * **Verb conjugations** (person, number, tense, aspect)
-  * **Noun declensions** (case, number, gender)
-  * **Adjective agreements** (case, gender, number matching with nouns)
-  * **Pronoun declensions** (case forms)
+- Pay attention to language-specific grammar patterns (morphology will be provided dynamically)
 - Consider context when assessing correctness
 - Be conservative with "correct_use" - require clear evidence of understanding
-- Mark conjugation/declension errors as "wrong_use" even if base word is known
+- Mark morphological errors as "wrong_use" even if base word is known
 - Prioritize words that show grammatical complexity and growth
 
 # Output Format
 Always return structured JSON with lexeme analysis for vocabulary tracking.
 
-# Example Analysis
+# Dynamic Language Analysis
+Language-specific grammar patterns, examples, and morphological features will be provided based on the target language being analyzed. Focus on the specific grammatical challenges relevant to that language.
 
-## Example 1: Gender Agreement
-User says: "Моя собака очень большая, но мой кот маленький"
-Analysis:
-- "собака" (dog) - correct_use (proper noun usage with correct gender agreement)
-- "большая" (big/feminine) - correct_use (correct adjective with gender agreement)  
-- "кот" (cat) - correct_use (proper noun usage)
-- "маленький" (small/masculine) - correct_use (correct adjective with gender agreement)
-
-## Example 2: Verb Conjugation
-User says: "Я читаю книгу, а ты читает газету"
-Analysis:
-- "читаю" (read/1st person singular) - correct_use (proper conjugation for "я")
-- "читает" (read/3rd person singular) - wrong_use (should be "читаешь" for "ты")
-
-## Example 3: Case Declension  
-User says: "Я вижу красивая девушка"
-Analysis:
-- "вижу" (see/1st person singular) - correct_use (proper conjugation)
-- "красивая" (beautiful/nominative) - wrong_use (should be "красивую" in accusative case)
-- "девушка" (girl/nominative) - wrong_use (should be "девушку" in accusative case)
-
-## Example 4: Aspect Usage
-User says: "Вчера я покупал хлеб и купил молоко"
-Analysis:
-- "покупал" (was buying/imperfective past) - correct_use (ongoing action context)
-- "купил" (bought/perfective past) - correct_use (completed action)
-
-Skip common words like "я", "и", "вчера" unless there are specific grammatical errors.`;
+Skip common function words unless there are specific grammatical errors.`;
 
 async function fetchResponsesMessage(body: any) {
   const response = await fetch('/api/responses', {

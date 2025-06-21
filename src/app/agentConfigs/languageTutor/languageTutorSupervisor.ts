@@ -3,16 +3,17 @@ import { getKnownWords, getReviewDue, getUserProgress } from '../../../lib/neo4j
 import { closeDriver } from '../../../lib/neo4j/driver';
 import { learningAnalysisInstructions } from '../learningSupervisor';
 import { LearningEvent } from '../../../lib/neo4j/types';
+import { getLanguageConfig, DEFAULT_LANGUAGE } from '../../../lib/languages';
 
-export const languageTutorSupervisorInstructions = `You are an expert language learning supervisor, providing intelligent guidance for a Russian tutor chatbot. You help create personalized, effective language learning experiences using spaced repetition principles.
+export const languageTutorSupervisorInstructions = `You are an expert language learning supervisor, providing intelligent guidance for language tutoring conversations. You help create personalized, effective language learning experiences using spaced repetition principles.
 
 # Your Role
-- Provide intelligent responses for a Russian language tutor
+- Provide intelligent responses for language tutoring
 - Incorporate spaced repetition system (SRS) data into learning decisions
 - Adapt vocabulary introduction based on user's current knowledge
 - Create natural, engaging conversations that promote learning
 - Balance challenge and comprehension
-- Help with Cyrillic script learning and pronunciation guidance
+- Help with script learning and pronunciation guidance when relevant
 
 # Learning Principles
 1. **Spaced Repetition**: Prioritize words due for review in conversations
@@ -22,41 +23,19 @@ export const languageTutorSupervisorInstructions = `You are an expert language l
 5. **Progress Tracking**: Acknowledge and celebrate learning milestones
 
 # Response Guidelines
-- Mix Russian and English appropriately for user's level
+- Mix target language and English appropriately for user's level
 - Use known vocabulary as foundation for new concepts
 - Incorporate 1-2 review words naturally per response when appropriate
-- Provide explanations for new vocabulary with Cyrillic script and pronunciation
+- Provide explanations for new vocabulary with script and pronunciation when relevant
 - Keep responses conversational and encouraging
 - Adapt complexity based on user's demonstrated proficiency
 
-# Teaching Strategies
-## For Beginners (few known words):
-- Use mostly English with key Russian phrases
-- Introduce basic vocabulary slowly with Cyrillic and romanization
-- Provide immediate translations and pronunciation guides
-- Focus on high-frequency words and basic Cyrillic letters
-
-## For Intermediate (growing vocabulary):
-- Increase Russian usage gradually
-- Challenge with new words in context
-- Use known words to explain new concepts
-- Encourage more Russian output and Cyrillic reading
-- **Focus heavily on grammar patterns:**
-  * Verb conjugations (present, past, future)
-  * Basic noun cases (nominative, accusative, genitive)
-  * Adjective-noun agreement
-  * Simple verb aspects (perfective vs imperfective)
-
-## For Advanced (many known words):
-- Primarily Russian conversation
-- Introduce sophisticated vocabulary and idiomatic expressions
-- Focus on nuanced usage and cultural context
-- **Master complex grammar structures:**
-  * All six cases with their functions
-  * Complex verb aspects and motion verbs
-  * Participles and gerunds
-  * Subjunctive mood and conditionals
-  * Literary and formal register
+# Dynamic Teaching Strategies
+The system will provide specific teaching strategies based on the target language and user proficiency level. These strategies are automatically adapted for:
+- Language-specific grammar patterns and morphology
+- Script and writing system requirements
+- Cultural context and idiomatic expressions
+- Appropriate language mixing ratios for different levels
 
 # SRS Integration
 - When introducing new words, mark them for tracking
@@ -190,18 +169,21 @@ export const getNextResponseFromSupervisor = tool({
       targetLanguage: {
         type: 'string', 
         description: 'Target language being learned',
-        default: 'ru'
+        default: DEFAULT_LANGUAGE
       }
     },
     required: ['relevantContextFromLastUserMessage'],
     additionalProperties: false,
   },
   execute: async (input, details) => {
-    const { relevantContextFromLastUserMessage, userId = 'demo-user', targetLanguage = 'ru' } = input as {
+    const { relevantContextFromLastUserMessage, userId = 'demo-user', targetLanguage = DEFAULT_LANGUAGE } = input as {
       relevantContextFromLastUserMessage: string;
       userId?: string;
       targetLanguage?: string;
     };
+
+    // Get language-specific configuration
+    const languageConfig = getLanguageConfig(targetLanguage);
 
     const addBreadcrumb = (details?.context as any)?.addTranscriptBreadcrumb as
       | ((title: string, data?: any) => void)
@@ -213,13 +195,48 @@ export const getNextResponseFromSupervisor = tool({
     // Sliding window: keep only last 10 exchanges (20 messages) for conversation context
     const recentHistory = filteredLogs.slice(-20);
 
+    // Build language-specific teaching strategies
+    const languageSpecificStrategies = `
+# Language-Specific Teaching Strategies for ${languageConfig.name} (${languageConfig.nativeName})
+
+## For Beginners (few known words):
+${languageConfig.teachingStrategies.beginner.description}
+- Mix ratio: ${languageConfig.teachingStrategies.beginner.mixRatio}
+- Focus areas:
+${languageConfig.teachingStrategies.beginner.focusAreas.map(area => `  * ${area}`).join('\n')}
+
+## For Intermediate (growing vocabulary):
+${languageConfig.teachingStrategies.intermediate.description}
+- Mix ratio: ${languageConfig.teachingStrategies.intermediate.mixRatio}
+- Focus areas:
+${languageConfig.teachingStrategies.intermediate.focusAreas.map(area => `  * ${area}`).join('\n')}
+
+## For Advanced (many known words):
+${languageConfig.teachingStrategies.advanced.description}
+- Mix ratio: ${languageConfig.teachingStrategies.advanced.mixRatio}
+- Focus areas:
+${languageConfig.teachingStrategies.advanced.focusAreas.map(area => `  * ${area}`).join('\n')}
+
+# Grammar Examples for ${languageConfig.name}
+
+## Correct Usage Examples:
+${languageConfig.grammarExamples.correct.map(ex => 
+  `- "${ex.text}" (${ex.translation}) - ${ex.explanation}`
+).join('\n')}
+
+## Common Error Patterns:
+${languageConfig.grammarExamples.incorrect.map(ex => 
+  `- Error: "${ex.text}" → Correct: "${ex.correction}" (${ex.explanation})`
+).join('\n')}
+`;
+
     const body: any = {
       model: 'gpt-4.1-mini-2025-04-14',
       input: [
         {
           type: 'message',
           role: 'system',
-          content: languageTutorSupervisorInstructions,
+          content: languageTutorSupervisorInstructions + '\n\n' + languageSpecificStrategies,
         },
         {
           type: 'message',
@@ -324,7 +341,7 @@ export const triggerLearningAnalysis = tool({
     additionalProperties: false,
   },
   execute: async (input, details) => {
-    const { userId = 'demo-user', userUtterance, conversationContext = '', targetLanguage = 'ru' } = input as {
+    const { userId = 'demo-user', userUtterance, conversationContext = '', targetLanguage = DEFAULT_LANGUAGE } = input as {
       userId?: string;
       userUtterance: string;
       conversationContext?: string;
@@ -543,14 +560,14 @@ export const getKnownVocabulary = tool({
       language: {
         type: 'string',
         description: 'Target language code',
-        default: 'ru'
+        default: DEFAULT_LANGUAGE
       }
     },
     required: [],
     additionalProperties: false,
   },
   execute: async (input) => {
-    const { userId = 'demo-user', language = 'ru' } = input as {
+    const { userId = 'demo-user', language = DEFAULT_LANGUAGE } = input as {
       userId?: string;
       language?: string;
     };
@@ -591,7 +608,7 @@ export const getReviewDueWords = tool({
     additionalProperties: false,
   },
   execute: async (input) => {
-    const { userId = 'demo-user', language = 'ru', limit = 5 } = input as {
+    const { userId = 'demo-user', language = DEFAULT_LANGUAGE, limit = 5 } = input as {
       userId?: string;
       language?: string;
       limit?: number;
@@ -621,14 +638,14 @@ export const getUserLearningProgress = tool({
       language: {
         type: 'string',
         description: 'Target language code',
-        default: 'ru'
+        default: DEFAULT_LANGUAGE
       }
     },
     required: [],
     additionalProperties: false,
   },
   execute: async (input) => {
-    const { userId = 'demo-user', language = 'ru' } = input as {
+    const { userId = 'demo-user', language = DEFAULT_LANGUAGE } = input as {
       userId?: string;
       language?: string;
     };
